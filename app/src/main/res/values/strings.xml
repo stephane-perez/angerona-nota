@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Angerona</string>
+    <string name="app_name">Angerona Nota</string>
 
     <!-- Top app bar actions (icon content descriptions) -->
     <string name="cd_new">New</string>

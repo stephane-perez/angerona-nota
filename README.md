@@ -1,4 +1,4 @@
-# Angerona (Android)
+# Angerona Nota (Android)
 
 A native Kotlin + Jetpack Compose implementation of the design in
 `design_handoff_android_notepad/README.md` — a local-only, encrypted, plain-text notepad
@@ -67,12 +67,12 @@ license, and build steps) and adding a few screenshots under
 
 ## File encryption
 
-**Every file saved by Angerona is encrypted on disk** — there is no way to save in
+**Every file saved by Angerona Nota is encrypted on disk** — there is no way to save in
 plain text. Only this app, on this specific device, can read the content back, using
 an AES-256-GCM key held in the Android Keystore.
 
 **Guarantees and limits — read this before trusting it with anything sensitive:**
-- ✅ A `.txt` file produced by Angerona is unreadable by any other app on the phone, a
+- ✅ A `.txt` file produced by Angerona Nota is unreadable by any other app on the phone, a
   computer it gets copied to, or anyone who picks it up via Drive/email/USB.
 - ✅ Tampering with an encrypted file (or an attempt to feed it a corrupted one) is
   detected and surfaced with a warning, not silently accepted or shown as garbled text.
