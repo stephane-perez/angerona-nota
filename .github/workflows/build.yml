@@ -40,20 +40,32 @@ jobs:
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           echo "version_code=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
 
-      - name: Build debug APK
+      # Unit tests and lint gate every build; assembleRelease (unsigned, R8-minified) is
+      # what F-Droid builds, so it must keep compiling even though we don't publish it.
+      - name: Test, lint and build
         run: >
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew testDebugUnitTest lintDebug assembleDebug assembleRelease --no-daemon
           -PversionNameOverride=${{ steps.version.outputs.version_name }}
           -PversionCodeOverride=${{ steps.version.outputs.version_code }}
 
+      - name: Upload test and lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: |
+            app/build/reports/tests/
+            app/build/reports/lint-results-debug.html
+          if-no-files-found: ignore
+
       - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/angerona-notepad.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/angerona-nota.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: angerona-notepad-apk
-          path: app/build/outputs/apk/debug/angerona-notepad.apk
+          name: angerona-nota-apk
+          path: app/build/outputs/apk/debug/angerona-nota.apk
           if-no-files-found: error
 
   release:
@@ -66,11 +78,13 @@ jobs:
       - name: Download APK artifact
         uses: actions/download-artifact@v4
         with:
-          name: angerona-notepad-apk
+          name: angerona-nota-apk
           path: dist
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/angerona-notepad.apk
+          files: dist/angerona-nota.apk
           generate_release_notes: true
+          # v1.2.3-rc1 and the like are published as pre-releases.
+          prerelease: ${{ contains(github.ref_name, '-') }}

@@ -1,12 +1,12 @@
-Angerona es un pequeño editor de texto plano, totalmente local — sin cuentas,
-sin sincronización en la nube, sin anuncios, sin rastreo. Todo permanece en
-tu dispositivo.
+Angerona Nota es un pequeño editor de texto plano, totalmente local — sin
+cuentas, sin sincronización en la nube, sin anuncios, sin rastreo. Todo
+permanece en tu dispositivo.
 
-Cada archivo que guardas se cifra con AES-256-GCM, usando una clave alojada
-en el Android Keystore que nunca sale del hardware seguro del teléfono. Solo
-Angerona, en este dispositivo concreto, puede volver a leerlo. Si un archivo
-no se puede descifrar (por ejemplo, un .txt antiguo sin cifrar), simplemente
-se abre tal cual — sin errores, sin fricción.
+Cada archivo que guardas se cifra con AES-256-GCM, usando una clave no
+exportable alojada en el Android Keystore. Solo Angerona Nota, en este
+dispositivo concreto, puede volver a leerlo. Un .txt antiguo sin cifrar se
+abre tal cual; un archivo cifrado que no se puede descifrar (clave ausente,
+archivo dañado o modificado) muestra un aviso en lugar de texto ilegible.
 
 Funciones:
 * Nuevo, Abrir, Guardar, Buscar y reemplazar, ajuste de línea, números de
@@ -18,8 +18,8 @@ Funciones:
 * No se solicita permiso de red. Esta app no puede "llamar a casa" ni aunque
   quisiera.
 
-Un aviso honesto: renombrar la app, reinstalarla o restaurar el teléfono de
-fábrica invalidan la clave de cifrado. Los archivos ya cifrados quedan
-entonces permanentemente ilegibles — no hay contraseña de recuperación. Por
-favor, lee la sección "File encryption" del README del proyecto antes de
-confiarle algo que no puedas permitirte perder.
+Un aviso honesto: desinstalar la app, restaurar el teléfono de fábrica o
+cambiar de teléfono hacen perder la clave de cifrado. Los archivos ya cifrados
+quedan entonces permanentemente ilegibles — no hay contraseña de
+recuperación. Por favor, lee la sección "File encryption" del README del
+proyecto antes de confiarle algo que no puedas permitirte perder.

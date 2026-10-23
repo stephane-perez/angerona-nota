@@ -1,7 +1,7 @@
 # Angerona Nota (Android)
 
-A native Kotlin + Jetpack Compose implementation of the design in
-`design_handoff_android_notepad/README.md` — a local-only, encrypted, plain-text notepad
+A native Kotlin + Jetpack Compose implementation of a design handoff (not included in
+this repo) — a local-only, encrypted, plain-text notepad
 in the "Classical" editorial design language (warm near-white ground, gold accent used
 only as stroke/text, hairline dividers, serif chrome with monospace editor content).
 
@@ -28,19 +28,35 @@ anyone but their author.
   Studio" below.
 
 ## Getting started
-Open this folder (`android-simple-notepad/`) directly in Android Studio — it's a
+Open the repository root directly in Android Studio — it's a
 self-contained Gradle project (Gradle 8.13, AGP 8.13.0, Kotlin 1.9.24) — and hit Run.
 No API keys, accounts, or network access are required; the app never touches the network.
 
 ## Building without Android Studio
 No local Android SDK is required. Every push to `main` (and every pull request) builds
 a debug APK via GitHub Actions — see `.github/workflows/build.yml`:
-- **Every push/PR**: builds `angerona-notepad.apk` and uploads it as a workflow artifact
+- **Every push/PR**: builds `angerona-nota.apk` and uploads it as a workflow artifact
   (Actions tab → the run → Artifacts).
 - **Pushing a tag starting with `v`** (e.g. `v1.0.0`, created from the Releases page or
   `git tag v1.0.0 && git push origin v1.0.0`): additionally publishes a public GitHub
-  Release with `angerona-notepad.apk` attached, downloadable by anyone if the repo is
-  public.
+  Release with `angerona-nota.apk` attached, downloadable by anyone if the repo is
+  public. A tag with a suffix (`v1.1.0-rc1`) is marked as a pre-release.
+
+The published APK is a **debug-signed** build (fixed key committed to the repo, see
+`DEVELOPMENT.md`), so every new version installs over the previous one without losing
+the encryption key.
+
+## Tests
+```
+./gradlew testDebugUnitTest
+```
+Plain JVM unit tests (`app/src/test/`) cover the encrypted container format
+(round-trip, tampering, wrong/missing key, size limits, strict UTF-8), the open-file
+classification (encrypted vs. legacy plain text, bounded read), find/replace counting,
+and the string resources (same keys and placeholders in all three languages, escaped
+apostrophes). CI runs them, plus Android lint and an unsigned release build, on every
+push and pull request; see `DEVELOPMENT.md` for the manual on-device checklist used
+before a release.
 
 ## Versioning
 See [`DEVELOPMENT.md`](DEVELOPMENT.md) for how `versionName`/`versionCode` are derived
@@ -143,8 +159,8 @@ for you); no code changes needed.
   (overflow menu, find strip, Open overlay, unsaved-changes dialog); otherwise it falls
   through to the system default so the app exits/minimizes normally.
 - **Encryption** — every save is encrypted (AES-256-GCM, Android Keystore-backed);
-  every open tries to decrypt and falls back to plain text if that fails. See
-  "File encryption" above.
+  an encrypted file that can't be decrypted is refused with a warning, while a
+  non-encrypted `.txt` opens as plain text. See "File encryption" above.
 
 ## Design tokens
 All colors, type sizes, spacing, and radii are transcribed from the handoff into

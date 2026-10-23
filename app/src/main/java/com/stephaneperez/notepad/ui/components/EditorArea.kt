@@ -26,8 +26,8 @@ import com.stephaneperez.notepad.ui.theme.NotepadColors
 import com.stephaneperez.notepad.ui.theme.NotepadType
 
 /**
- * Wrap off (default): no soft wrap, horizontal scrolling; the gutter stays fixed.
- * Wrap on: soft wrap, no horizontal scroll; the gutter is hidden by the caller.
+ * Wrap off: no soft wrap, horizontal scrolling; the gutter stays fixed.
+ * Wrap on (default): soft wrap, no horizontal scroll; the gutter is hidden by the caller.
  * The gutter and the text share one vertical ScrollState so line numbers track the text.
  */
 @Composable

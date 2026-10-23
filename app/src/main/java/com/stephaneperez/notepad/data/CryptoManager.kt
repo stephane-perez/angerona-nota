@@ -32,7 +32,7 @@ object CryptoManager {
     private const val GCM_TAG_LENGTH_BYTES = GCM_TAG_LENGTH_BITS / 8
     private const val IV_LENGTH_BYTES = 12
 
-    /** Files above this size are refused on open and on save — see README, "Size limit". */
+    /** Files above this size are refused on open and on save — see README, "File encryption". */
     const val MAX_PLAINTEXT_BYTES = 100 * 1024 // 100 KB
 
     // On-disk container: "SNPD" magic + 1-byte format version + 12-byte GCM IV +
@@ -93,12 +93,19 @@ object CryptoManager {
      * Throws [IllegalArgumentException] if the encoded text exceeds [MAX_PLAINTEXT_BYTES]
      * — callers should check size before calling this, this is a last-resort guard.
      */
-    fun encrypt(plainText: String): ByteArray {
+    fun encrypt(plainText: String): ByteArray = encryptWith(plainText) { getOrCreateKey() }
+
+    /**
+     * Container logic behind [encrypt], with the key supplied by [keyProvider] (only
+     * invoked once the size check has passed). Internal so JVM unit tests can exercise
+     * the format with a software key — the Android Keystore isn't available off-device.
+     */
+    internal fun encryptWith(plainText: String, keyProvider: () -> SecretKey): ByteArray {
         val plainBytes = plainText.toByteArray(Charsets.UTF_8)
         require(plainBytes.size <= MAX_PLAINTEXT_BYTES) { "Text exceeds MAX_PLAINTEXT_BYTES" }
 
         val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
+        cipher.init(Cipher.ENCRYPT_MODE, keyProvider())
         cipher.updateAAD(HEADER)
         val iv = cipher.iv // Keystore-generated random IV
         require(iv.size == IV_LENGTH_BYTES) { "Unexpected GCM IV length: ${iv.size}" }
@@ -127,7 +134,10 @@ object CryptoManager {
      * Only ever reads an existing Keystore key — never creates one as a side effect of a
      * failed open.
      */
-    fun decrypt(data: ByteArray): String? {
+    fun decrypt(data: ByteArray): String? = decryptWith(data) { getExistingKey() }
+
+    /** Logic behind [decrypt], with the key supplied by [keyProvider] — see [encryptWith]. */
+    internal fun decryptWith(data: ByteArray, keyProvider: () -> SecretKey?): String? {
         if (!looksEncrypted(data)) return null
         // Enforced here, not just by callers: refuse an oversized container before any
         // copyOfRange/doFinal allocation, so this class can't be handed a huge buffer
@@ -138,7 +148,7 @@ object CryptoManager {
         // keystore, provider unavailable) — is inside one runCatching, so this function
         // truly never throws and always returns null on any failure, as documented.
         return runCatching {
-            val key = getExistingKey() ?: return@runCatching null
+            val key = keyProvider() ?: return@runCatching null
 
             val iv = data.copyOfRange(HEADER_LENGTH, HEADER_LENGTH + IV_LENGTH_BYTES)
             val ciphertext = data.copyOfRange(HEADER_LENGTH + IV_LENGTH_BYTES, data.size)

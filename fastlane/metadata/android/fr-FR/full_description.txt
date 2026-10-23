@@ -1,12 +1,13 @@
-Angerona est un petit éditeur de texte brut, entièrement local — pas de
+Angerona Nota est un petit éditeur de texte brut, entièrement local — pas de
 compte, pas de synchronisation cloud, pas de publicité, pas de traqueur. Tout
 reste sur votre appareil.
 
-Chaque fichier enregistré est chiffré en AES-256-GCM, avec une clé conservée
-dans l'Android Keystore qui ne quitte jamais le matériel sécurisé du
-téléphone. Seule Angerona, sur cet appareil précis, peut le relire. Si un
-fichier ne peut pas être déchiffré (par exemple un ancien .txt en clair), il
-s'ouvre simplement tel quel — pas d'erreur, pas de blocage.
+Chaque fichier enregistré est chiffré en AES-256-GCM, avec une clé non
+exportable conservée dans l'Android Keystore. Seule Angerona Nota, sur cet
+appareil précis, peut le relire. Un ancien .txt en clair s'ouvre simplement
+tel quel ; un fichier chiffré qui ne peut pas être déchiffré (clé absente,
+fichier corrompu ou modifié) affiche un avertissement plutôt que du texte
+illisible.
 
 Fonctionnalités :
 * Nouveau, Ouvrir, Enregistrer, Rechercher/remplacer, retour à la ligne,
@@ -18,8 +19,8 @@ Fonctionnalités :
 * Aucune permission réseau demandée. Cette app ne peut pas contacter un
   serveur, même si elle le voulait.
 
-Un mot d'honnêteté : renommer l'app, la réinstaller, ou réinitialiser le
-téléphone invalident tous la clé de chiffrement. Les fichiers déjà chiffrés
+Un mot d'honnêteté : désinstaller l'app, réinitialiser le téléphone ou changer
+de téléphone font perdre la clé de chiffrement. Les fichiers déjà chiffrés
 deviennent alors définitivement illisibles — il n'y a pas de mot de passe de
-secours. Merci de lire la section "Chiffrement des fichiers" du README du
-projet avant d'y confier quoi que ce soit d'important.
+secours. Merci de lire la section "File encryption" du README du projet avant
+d'y confier quoi que ce soit d'important.

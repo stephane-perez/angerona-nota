@@ -94,6 +94,12 @@ android {
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.14"
     }
+
+    // Plain JVM unit tests (app/src/test): android.jar stubs return defaults instead of
+    // throwing, so classes that merely reference Android types can still be loaded.
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {
@@ -113,4 +119,6 @@ dependencies {
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
+
+    testImplementation("junit:junit:4.13.2")
 }
