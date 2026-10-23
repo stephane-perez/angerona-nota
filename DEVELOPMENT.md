@@ -45,7 +45,8 @@ next.
 **On-disk format**: `SNPD` (4-byte magic) + version (1 byte) + IV (12 bytes) +
 ciphertext + 16-byte GCM authentication tag. The header (magic + version) is passed
 to AES-256-GCM as AAD, so tampering with it — not just the ciphertext — is detected
-too. Implementation: `data/CryptoManager.kt`, wired into
+too. Implementation: `data/CryptoManager.kt`; opening goes through `data/DocumentCodec.kt`
+(bounded read, encrypted-vs-legacy classification), wired into
 `NotepadViewModel.loadDocument()` / `.save()`.
 
 This design was reviewed by a second AI (ChatGPT) across four rounds — the first three
@@ -132,6 +133,27 @@ Declined, with reasoning:
 - **DataStore vs. Android Backup** was already resolved in round 1
   (`android:allowBackup="false"`).
 
+### Round 5 — `NotepadScreen.kt`
+Fixed: **"Save first" on a never-saved buffer closed the unsaved-changes dialog and
+cleared the pending New/Open action the moment the `CreateDocument` picker returned a
+URI — before knowing whether the write would actually succeed.** A destination chosen
+by the picker isn't the same as a successful write. `completeSaveAs()` now resumes the
+pending action itself (via a `resumePendingAction()` helper shared with
+`onDialogSaveFirst()`), only after a confirmed successful write; on failure, the
+dialog/pending action are left untouched and the existing failure toast is shown. This
+had been a known, documented limitation ("Save first" not auto-resuming — see the
+README's git history) rather than a bug fix; round 4's save-result plumbing made it
+straightforward to close properly. Declined: `save()` reporting its result to
+`NotepadScreen` for the Screen to react to — already unnecessary, since `save()`
+already surfaces failure via a toast (round 4), which the Screen doesn't need to
+duplicate; explicit tracking of whether `takePersistableUriPermission()` succeeded —
+already effectively covered by round 4's dead-`lastUri` self-healing, which absorbs
+the practical consequence without needing a separate signal; switching the
+`OpenDocument` picker's MIME filter from `text/plain` to `*/*` — our own files keep
+the `text/plain` MIME declared at creation regardless of their now-encrypted content,
+so this isn't currently a real gap, and a broader filter would make the picker less
+useful for a text-notes app.
+
 ### Round 6 — `NotepadViewModel.kt`, closer look
 Fixed: **`openDocument(uri)` ignored `loadDocument()`'s success/failure result** —
 even when opening failed (too large, corrupted, key missing), it still closed the
@@ -205,23 +227,43 @@ narrower, honest threat model, the review's own conclusion was that the architec
 — `CryptoManager` + `NotepadViewModel` + SAF + DataStore — is "already pretty clean."
 That's a reasonable place to stop iterating on this particular audit thread.
 
-### Round 5 — `NotepadScreen.kt`
-Fixed: **"Save first" on a never-saved buffer closed the unsaved-changes dialog and
-cleared the pending New/Open action the moment the `CreateDocument` picker returned a
-URI — before knowing whether the write would actually succeed.** A destination chosen
-by the picker isn't the same as a successful write. `completeSaveAs()` now resumes the
-pending action itself (via a `resumePendingAction()` helper shared with
-`onDialogSaveFirst()`), only after a confirmed successful write; on failure, the
-dialog/pending action are left untouched and the existing failure toast is shown. This
-had been a known, documented limitation ("Save first" not auto-resuming — see the
-README's git history) rather than a bug fix; round 4's save-result plumbing made it
-straightforward to close properly. Declined: `save()` reporting its result to
-`NotepadScreen` for the Screen to react to — already unnecessary, since `save()`
-already surfaces failure via a toast (round 4), which the Screen doesn't need to
-duplicate; explicit tracking of whether `takePersistableUriPermission()` succeeded —
-already effectively covered by round 4's dead-`lastUri` self-healing, which absorbs
-the practical consequence without needing a separate signal; switching the
-`OpenDocument` picker's MIME filter from `text/plain` to `*/*` — our own files keep
-the `text/plain` MIME declared at creation regardless of their now-encrypted content,
-so this isn't currently a real gap, and a broader filter would make the picker less
-useful for a text-notes app.
+### v1.0.0 — stabilization pass
+Fixed: **files opened from the in-app document list showed up as `untitled.txt`** —
+`queryDisplayName()` queried a `ContentProvider`, which `file://` URIs don't have; the
+name now comes from the path. **Save-As of an over-100 KB buffer** reported a generic
+"Could not save" (it hit `encrypt()`'s last-resort guard); it now shows the same
+"File too large" toast as `save()`. Fastlane descriptions corrected: they claimed the
+key "never leaves secure hardware" (not guaranteed, see `CryptoManager`), that
+renaming the app invalidates the key (only the `applicationId` matters), and that an
+undecryptable file "opens as-is" (it is refused with a warning).
+
+Known and accepted: if Android kills the app process while the system Save-As picker
+is open (rare, low-memory devices), the unsaved buffer is lost — the text isn't kept
+in saved instance state, since a 100 KB note would risk exceeding the Binder
+transaction limit.
+
+## Tests
+
+`./gradlew testDebugUnitTest` runs plain JVM tests (no device, no Robolectric):
+- `CryptoManagerTest` — via the internal `encryptWith`/`decryptWith`, which take the
+  key as a parameter, so a software AES key stands in for the Keystore one.
+- `DocumentCodecTest` — bounded read and encrypted/legacy classification.
+- `NotepadUiStateTest` — derived counts, find/replace match counting.
+- `StringResourcesTest` — same keys and placeholders in `values`, `values-fr`,
+  `values-es`; no unescaped apostrophe.
+
+The ViewModel/SAF/Keystore glue isn't unit-tested (it would need an emulator). Before
+tagging a release, run through this on a real device, **installing over the previous
+version** (never uninstall — that destroys the key):
+1. Notes saved by the previous version still open.
+2. New → type → Save → pick a location → reopen via Open → Browse device storage.
+3. Edit → Save (no picker) → relaunch the app: the last note is restored.
+4. Edit → New → "Save first" on an untitled buffer, then cancel the picker: the
+   dialog stays up, nothing is lost.
+5. Open a plain `.txt` from another app: opens as text; saving it encrypts it.
+6. Find/replace, wrap and line-number toggles, system Back closing each layer.
+
+## Releasing
+1. Merge to `main` with CI green, run the checklist above.
+2. Tag and push: `git tag v1.0.0 && git push origin v1.0.0`. CI builds, tests and
+   publishes the GitHub Release with `angerona-nota.apk`.
