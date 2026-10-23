@@ -14,8 +14,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
-import java.io.InputStream
 
 /** A file entry surfaced by the in-app "Open document" list (see README §Platform adaptations). */
 data class LocalFileEntry(
@@ -154,28 +152,6 @@ class NotepadViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch { prefs.setLastUri(uri.toString()) }
     }
 
-    /** Thrown by [readBytesUpTo] to distinguish "too large" from other read failures. */
-    private class TooLargeException : Exception()
-
-    /**
-     * Reads [stream] up to [maxBytes], throwing [TooLargeException] as soon as more than
-     * that has been read — never buffering an oversized file fully in memory just to
-     * measure it.
-     */
-    private fun readBytesUpTo(stream: InputStream, maxBytes: Int): ByteArray {
-        val buffer = ByteArrayOutputStream()
-        val chunk = ByteArray(8192)
-        var total = 0
-        while (true) {
-            val read = stream.read(chunk)
-            if (read == -1) break
-            total += read
-            if (total > maxBytes) throw TooLargeException()
-            buffer.write(chunk, 0, read)
-        }
-        return buffer.toByteArray()
-    }
-
     /** Returns true if [uri] was successfully loaded into the buffer. */
     private fun loadDocument(uri: Uri): Boolean {
         val context = getApplication<Application>()
@@ -187,45 +163,26 @@ class NotepadViewModel(application: Application) : AndroidViewModel(application)
         // maximally-sized note of our own on reopen.
         val readResult = runCatching {
             context.contentResolver.openInputStream(uri)?.use { stream ->
-                readBytesUpTo(stream, CryptoManager.MAX_CONTAINER_BYTES)
+                DocumentCodec.readBytesUpTo(stream, CryptoManager.MAX_CONTAINER_BYTES)
             }
         }
 
-        if (readResult.exceptionOrNull() is TooLargeException) {
+        if (readResult.exceptionOrNull() is DocumentCodec.TooLargeException) {
             _uiState.update { it.copy(toast = context.getString(R.string.toast_file_too_large)) }
             return false
         }
         val bytes = readResult.getOrNull() ?: return false // couldn't open at all — stay silent, as before
 
-        val content: String
-        if (CryptoManager.looksEncrypted(bytes)) {
-            val decrypted = CryptoManager.decrypt(bytes)
-            if (decrypted == null) {
-                // This IS one of our files (magic header matches), but it couldn't
-                // be decrypted — wrong/missing key or tampering. Unlike a genuine
-                // legacy plain-text file, showing these raw bytes as "text" would
-                // just be noise; warn instead of silently displaying it.
-                _uiState.update { it.copy(toast = context.getString(R.string.toast_decrypt_failed)) }
-                return false
-            }
-            content = decrypted
-        } else {
-            // Doesn't look like one of ours at all — an ordinary legacy .txt file.
-            // Checked against MAX_PLAINTEXT_BYTES here (tighter than the
-            // MAX_CONTAINER_BYTES bound used for the initial bounded read above): the
-            // 100 KB limit should apply uniformly to any note this app holds, not just
-            // to our own encrypted ones.
-            if (bytes.size > CryptoManager.MAX_PLAINTEXT_BYTES) {
+        val content = when (val result = DocumentCodec.decode(bytes)) {
+            is DocumentCodec.Result.Ok -> result.text
+            DocumentCodec.Result.TooLarge -> {
                 _uiState.update { it.copy(toast = context.getString(R.string.toast_file_too_large)) }
                 return false
             }
-            // Deliberately lenient UTF-8 decoding here (unlike the strict decoder in
-            // CryptoManager.decrypt()): this path handles arbitrary external files we
-            // don't control, which may be in any encoding — rejecting them outright
-            // would break opening perfectly legitimate legacy notes. The strict check
-            // only makes sense for our own encrypted format, which we know is always
-            // valid UTF-8 by construction.
-            content = String(bytes, Charsets.UTF_8)
+            DocumentCodec.Result.DecryptFailed -> {
+                _uiState.update { it.copy(toast = context.getString(R.string.toast_decrypt_failed)) }
+                return false
+            }
         }
 
         val name = queryDisplayName(uri) ?: "untitled.txt"
@@ -242,6 +199,9 @@ class NotepadViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun queryDisplayName(uri: Uri): String? {
+        // file:// URIs (the in-app document list) have no ContentProvider to query —
+        // without this, every file opened from that list showed up as "untitled.txt".
+        if (uri.scheme == "file") return uri.lastPathSegment
         val context = getApplication<Application>()
         return runCatching {
             context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
@@ -269,7 +229,7 @@ class NotepadViewModel(application: Application) : AndroidViewModel(application)
      * (`"wt"`), so a write that fails partway (disk full, provider error) can leave the
      * file empty or partially written rather than restoring the previous good content —
      * true atomic replace would need a temp-document-then-rename dance whose
-     * reliability varies by SAF provider. See README, "Known adaptations".
+     * reliability varies by SAF provider. See DEVELOPMENT.md, round 4.
      */
     private fun writeEncrypted(uri: Uri, text: String): Boolean {
         val context = getApplication<Application>()
@@ -279,6 +239,9 @@ class NotepadViewModel(application: Application) : AndroidViewModel(application)
             true
         }.getOrElse { false }
     }
+
+    private fun exceedsSizeLimit(text: String): Boolean =
+        text.toByteArray(Charsets.UTF_8).size > CryptoManager.MAX_PLAINTEXT_BYTES
 
     /**
      * Save writes straight to the current file — no Save-as dialog, no confirmation
@@ -302,7 +265,7 @@ class NotepadViewModel(application: Application) : AndroidViewModel(application)
             return false
         }
 
-        if (state.text.toByteArray(Charsets.UTF_8).size > CryptoManager.MAX_PLAINTEXT_BYTES) {
+        if (exceedsSizeLimit(state.text)) {
             _uiState.update { it.copy(toast = context.getString(R.string.toast_file_too_large)) }
             return false
         }
@@ -333,6 +296,12 @@ class NotepadViewModel(application: Application) : AndroidViewModel(application)
         val context = getApplication<Application>()
 
         val text = _uiState.value.text
+        if (exceedsSizeLimit(text)) {
+            // Same check as save(): without it, an oversized buffer reached encrypt()'s
+            // last-resort guard and surfaced as a generic "Could not save".
+            _uiState.update { it.copy(toast = context.getString(R.string.toast_file_too_large)) }
+            return
+        }
         if (!writeEncrypted(uri, text)) {
             _uiState.update { it.copy(toast = context.getString(R.string.toast_save_failed)) }
             // Deliberately don't touch `confirm` here: if this came from "Save first",
